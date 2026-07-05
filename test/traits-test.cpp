@@ -1,4 +1,4 @@
-#include "socow-vector.h"
+#include "../src/socow-vector.h"
 #include "test-utils.h"
 
 #include <catch2/catch_test_macros.hpp>
