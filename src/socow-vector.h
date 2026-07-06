@@ -8,7 +8,7 @@
 
 namespace ct {
 
-template <typename T, std::size_t SMALL_SIZE>
+template <typename T, std::size_t SMALL_SIZE, typename Allocator = std::allocator<T>>
 class SocowVector {
 private:
   static_assert(std::is_copy_constructible_v<T>, "T must have a copy constructor");
@@ -16,26 +16,17 @@ private:
   static_assert(std::is_copy_assignable_v<T>, "T must have a copy assignment operator");
   static_assert(std::is_nothrow_move_assignable_v<T>, "T must have a non-throwing move assignment operator");
   static_assert(std::is_nothrow_swappable_v<T>, "T must have a non-throwing swap");
+  static_assert(SMALL_SIZE > 0, "SMALL_SIZE must be positive");
 
   struct ControllBlock {
     size_t ref_counter = 1;
     T* data;
-
-    ~ControllBlock() {
-      --ref_counter;
-      if (ref_counter == 0) {
-        delete[] data;
-      }
-    }
   };
 
   ControllBlock* ShareRef(const ControllBlock* cb) {
     cb->ref_counter++;
     return cb;
   }
-
-  static_assert(SMALL_SIZE > 0, "SMALL_SIZE must be positive");
-
   union SmallObject {
     alignas(T) uint8_t small_data[SMALL_SIZE];
     ControllBlock* data;
@@ -45,6 +36,7 @@ private:
   size_t size_ = 0;
   size_t capacity_ = SMALL_SIZE / sizeof(T);
   bool is_small_ = true;
+  Allocator alloc;
 public:
   SocowVector() = default;
   SocowVector(const SocowVector& other) {
@@ -55,10 +47,12 @@ public:
         void* other_ptr = other.small_obj_.small_data + i * sizeof(T);
         try {
           ::new (curr_ptr) T(*reinterpret_cast<T*>(other_ptr));
+          alloc.construct
         } catch (...) {
           for (size_t j = 0; j < copied; ++j) {
             void* ptr = small_obj_.small_data + j * sizeof(T);
-            reinterpret_cast<T*>(ptr)->~T();
+            alloc.destroy(ptr);
+            // reinterpret_cast<T*>(ptr)->~T();
           }
           throw;
         }
@@ -72,10 +66,14 @@ public:
   };
   SocowVector(SocowVector&& other) noexcept {
     if (other.is_small_) {
-      if (is_small_) {
-        
+      for (size_t i = 0; i < other.size_(); ++i) {
+        T* curr_ptr = reinterpret_cast<T*>(small_obj_.small_data + i * sizeof(T));
+        T* other_ptr = reinterpret_cast<T*>(other.small_obj_.small_data + i * sizeof(T));
+        ::new (curr_ptr) T(std::move(*other_ptr))
       }
-
+    } else {
+      small_obj_.data = other.small_obj_.data;
+      //FreeMEm
     }
   };
   SocowVector& operator=(const SocowVector& other) {
@@ -117,6 +115,24 @@ public:
   size_t size() const noexcept {
     return size_;
   }
+
+  T& operator[](size_t indx) {
+    T* curr_ind;
+    if (is_small_) {
+      T* curr_ind = reinterpret_cast<T*>(small_obj_.small_data + indx * sizeof(T));
+      return *curr_ind;
+    } else {
+      if (small_obj_.data->ref_counter > 1) {
+        small_obj_.data = ;
+        for (int i = 0; i < size_; ++i) {
+
+        }
+      }
+      T* curr_ind = small_obj_.data->data + indx; 
+    }
+    return *curr_ind;
+  }
+
 };
 
 } // namespace ct
